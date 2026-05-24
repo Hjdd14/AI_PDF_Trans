@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+dist/
+build/
+*.spec
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# LaTeX temp files
+*.aux
+*.out
+*.synctex.gz
+*.toc
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App runtime data (config, API keys, fonts, binaries, diagnostics)
+data/
+
+# Temporary working directories
+.agent_work_*/
+
+# PDF files (input/output, translation results)
+*.pdf
+!templates/**/*.pdf
+
+# Debug/test scripts at root
+test_border_detect.py
+
+# Output directories
+output/
+logs/

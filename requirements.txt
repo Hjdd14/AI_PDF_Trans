@@ -1,0 +1,5 @@
+flet>=0.85.0
+litellm>=1.80.0
+pymupdf>=1.25.0
+cryptography>=41.0.0
+tenacity>=9.0.0
