@@ -45,6 +45,9 @@ def build():
         "fitz", "PIL", "PIL.Image", "tenacity",
         "cryptography", "cryptography.fernet",
         "concurrent.futures", "asyncio",
+        "fastapi", "uvicorn", "starlette", "websockets", "python_multipart",
+        "src", "src.server", "src.server.server", "src.server.task_manager",
+        "src.server.network",
     ]
     for mod in hidden:
         args.append(f"--hidden-import={mod}")

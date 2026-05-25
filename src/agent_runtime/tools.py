@@ -6,7 +6,9 @@ Tools interact with the filesystem, PDF documents, and the Tectonic compiler.
 
 import base64
 import json
+import logging
 import os
+import re
 import subprocess
 import sys
 from functools import lru_cache
@@ -185,7 +187,7 @@ def get_page_blocks(pdf_path: str, page_num: int, verbose: bool = False) -> str:
 # ── Tool 4: get_page_as_image ─────────────────────────────────────────────────
 
 def get_page_as_image(pdf_path: str, page_num: int, output_dir: str, dpi: int = 150) -> dict:
-    """Render a PDF page as a PNG image."""
+    """Render a PDF page for visual reference — NOT for use as a figure image."""
     doc = _open_pdf(pdf_path)
     try:
         if page_num < 1 or page_num > doc.page_count:
@@ -197,12 +199,17 @@ def get_page_as_image(pdf_path: str, page_num: int, output_dir: str, dpi: int = 
         pix = page.get_pixmap(dpi=dpi)
         pix.save(output_path)
 
+        with open(output_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+
         return {
-            "image_path": output_path,
+            "image_data": f"data:image/png;base64,{b64[:200]}",
             "width": pix.width,
             "height": pix.height,
             "file_size": os.path.getsize(output_path),
-            "note": "Use view_image() to inspect this image visually.",
+            "note": "This is a FULL PAGE RENDER for VISUAL REFERENCE ONLY. "
+                    "NEVER use this image in \\includegraphics. "
+                    "It is not a figure — it is the entire page content.",
         }
     finally:
         pass  # cached, do not close
@@ -252,6 +259,18 @@ def _parse_pdfimages_list(pdf_path: str) -> list[dict]:
             except (ValueError, IndexError):
                 continue
     return entries
+
+
+def _suggest_figure_width(pixel_width: int) -> str:
+    """Suggest a \\includegraphics width based on image pixel dimensions."""
+    if pixel_width > 900:
+        return "0.85\\textwidth"
+    elif pixel_width > 600:
+        return "0.65\\textwidth"
+    elif pixel_width > 300:
+        return "0.45\\textwidth"
+    else:
+        return "0.3\\textwidth"
 
 
 def run_pdfimages(pdf_path: str, output_dir: str, prefix: str = "img") -> dict:
@@ -311,13 +330,47 @@ def run_pdfimages(pdf_path: str, output_dir: str, prefix: str = "img") -> dict:
             if etype == "image":
                 detail["source_page"] = list_entries[i]["page"]
                 detail["type"] = "content"
+                detail["suggested_width"] = _suggest_figure_width(detail.get("width", 0) or 0)
                 content_count += 1
                 source_pages_seen.add(list_entries[i]["page"])
             else:
                 detail["type"] = f"{etype} (skip)"
 
-    summary = f"content images: {content_count} (source pages: {sorted(source_pages_seen)}). "
-    summary += "ONLY include images with type='content' as figures. Skip images with type containing '(skip)'."
+    # ── Full-page image filter ───────────────────────────────────────────────
+    # Slide-exported PDFs often embed each entire slide as a single raster image.
+    # Without filtering, the LLM places these as figures, duplicating all page text.
+    # Check each image's placement bbox: if it covers >70% of its source page,
+    # it's likely a full-page render, not a discrete figure — skip it.
+    fullpage_pages = set()
+    if content_count > 0:
+        try:
+            doc = _open_pdf(pdf_path)
+            for sp in source_pages_seen:
+                try:
+                    page = doc[sp - 1]
+                    pw, ph = page.rect.width, page.rect.height
+                    page_area = pw * ph
+                    for img_info in page.get_images(full=True):
+                        xref = img_info[0]
+                        for rect in page.get_image_rects(xref):
+                            if rect.width * rect.height / page_area > 0.7:
+                                fullpage_pages.add(sp)
+                                break
+                except Exception:
+                    continue
+
+            if fullpage_pages:
+                for detail in file_details:
+                    if detail.get("source_page") in fullpage_pages and detail.get("type") == "content":
+                        detail["type"] = "fullpage (skip)"
+                        content_count -= 1
+        except Exception:
+            pass
+
+    remaining_pages = sorted(source_pages_seen - fullpage_pages) if fullpage_pages else sorted(source_pages_seen)
+    summary = f"content images: {content_count} (source pages: {remaining_pages}). "
+    summary += "ONLY include images with type='content' as figures. Skip images with type containing '(skip)'. "
+    summary += "Each content image includes a 'suggested_width' field — use it as the width parameter in \\includegraphics."
 
     return {
         "files": file_details,
@@ -437,8 +490,36 @@ def read_file(file_path: str) -> str:
 
 # ── Tool 9: write_tex_file ────────────────────────────────────────────────────
 
+# Regex: remove \begin{figure}[H]...\end{figure} blocks that contain page_renders
+_PAGE_RENDER_FIGURE_RE = re.compile(
+    r'\\begin\{figure\}\[H\]\s*\n'
+    r'(?:\s*\\centering\s*\n)?'
+    r'\s*\\includegraphics\[.*?\]\{.*?page_renders/.*?\}\s*\n'
+    r'(?:\s*\\caption\{.*?\}\s*\n)?'
+    r'(?:\s*\\label\{.*?\}\s*\n)?'
+    r'\s*\\end\{figure\}',
+    re.MULTILINE | re.DOTALL,
+)
+
+# Regex: remove stray \includegraphics referencing page_renders outside figure env
+_PAGE_RENDER_INCLUDEGRAPHICS_RE = re.compile(
+    r'\\includegraphics\[.*?\]\{.*?page_renders/.*?\}',
+)
+
+
+def _strip_page_render_figures(content: str) -> str:
+    """Remove any \\includegraphics or figure environments referencing page_renders/."""
+    cleaned = _PAGE_RENDER_FIGURE_RE.sub('', content)
+    cleaned = _PAGE_RENDER_INCLUDEGRAPHICS_RE.sub('', cleaned)
+    if cleaned != content:
+        stripped_count = content.count('page_renders') - cleaned.count('page_renders')
+        logging.warning("Stripped %%d page_renders/ reference(s) from .tex output", stripped_count)
+    return cleaned
+
+
 def write_tex_file(tex_path: str, content: str) -> str:
     """Write LaTeX content to a .tex file."""
+    content = _strip_page_render_figures(content)
     os.makedirs(os.path.dirname(os.path.abspath(tex_path)), exist_ok=True)
     with open(tex_path, "w", encoding="utf-8") as f:
         f.write(content)

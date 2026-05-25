@@ -13,11 +13,13 @@ from src.utils.logger import get_logger
 
 
 class SettingsPage(ft.Column):
-    def __init__(self, config: FullConfig, on_save):
+    def __init__(self, config: FullConfig, on_save, on_server_toggle=None):
         super().__init__(expand=True, spacing=10, scroll=ft.ScrollMode.AUTO)
         self.config = config
         self.on_save = on_save
+        self._on_server_toggle = on_server_toggle
         self.log = get_logger()
+        self._server_running = False
         self._build_ui()
 
     def _t(self, key: str) -> str:
@@ -108,11 +110,15 @@ class SettingsPage(ft.Column):
 
         save_section = ft.Row([self._save_btn, self._save_result], spacing=15)
 
+        # Remote server card (built in separate method)
+        remote_section = self._build_remote_card()
+
         self.controls = [
             ft.Container(content=lang_section, padding=5),
             ft.Container(content=llm_section, padding=5),
             ft.Container(content=tools_section, padding=5),
             ft.Container(content=save_section, padding=5),
+            ft.Container(content=remote_section, padding=5),
         ]
 
     def _on_lang_change(self, e):
@@ -141,6 +147,7 @@ class SettingsPage(ft.Column):
         if self._download_tectonic_btn is not None:
             self._download_tectonic_btn.text = L("download_tectonic")
         self._save_btn.text = L("save_settings")
+        self.update_remote_texts()
 
     def _test_connection_sync(self) -> tuple[bool, str]:
         """Test LLM connection synchronously (runs in thread)."""
@@ -217,6 +224,140 @@ class SettingsPage(ft.Column):
         self.config.llm.api_url = self._api_url.value or None
         self.config.llm.api_key = self._api_key.value
         self.config.llm.model_name = self._model_name.value
+
+    # ── Remote server ──────────────────────────────────────────────────────
+
+    def _build_remote_card(self):
+        L = self._t
+
+        self._remote_title = ft.Text(L("remote_access"), size=16, weight=ft.FontWeight.BOLD)
+        self._remote_toggle = ft.Switch(label=L("remote_enable"), value=False, on_change=self._on_remote_toggle)
+        self._remote_status = ft.Text(f"{L('server_status')}: {L('server_stopped')}", size=13, color=ft.Colors.GREY)
+        self._remote_ips = ft.Text("", size=12, color=ft.Colors.GREY_600)
+        self._remote_port = ft.TextField(label=L("server_port"), value="8654", width=100, on_blur=self._on_port_change)
+        self._remote_firewall = ft.Text("", size=12, color=ft.Colors.GREY_600)
+        self._remote_qr = ft.Image(src="", width=200, height=200, visible=False)
+        self._remote_qr_label = ft.Text("", size=12, color=ft.Colors.GREY_500, visible=False)
+        self._remote_test_btn = ft.ElevatedButton(
+            L("test_local_connection"), icon=ft.Icons.NETWORK_CHECK, on_click=self._on_test_remote,
+            visible=False,
+        )
+        self._remote_test_result = ft.Text("", size=12)
+
+        return ft.Card(content=ft.Container(content=ft.Column([
+            self._remote_title,
+            self._remote_toggle,
+            self._remote_status,
+            self._remote_ips,
+            ft.Row([self._remote_port, self._remote_test_btn], spacing=10),
+            self._remote_test_result,
+            self._remote_firewall,
+            self._remote_qr_label,
+            self._remote_qr,
+        ], spacing=8), padding=15))
+
+    def _on_remote_toggle(self, e):
+        if self._on_server_toggle is None:
+            self._remote_toggle.value = False
+            self.update()
+            return
+        enable = e.data == "true" if isinstance(e.data, str) else self._remote_toggle.value
+        if enable:
+            port = int(self._remote_port.value or "8654")
+            success, err = self._on_server_toggle(True, port)
+            if success:
+                self._server_running = True
+                self._update_remote_ui_running(port)
+            else:
+                self._remote_toggle.value = False
+                err_msg = err or self._t("error_prefix")
+                self._remote_status.value = f"{self._t('server_status')}: {err_msg}"
+                self._remote_status.color = ft.Colors.RED
+        else:
+            self._on_server_toggle(False, 0)
+            self._server_running = False
+            self._update_remote_ui_stopped()
+        self.update()
+
+    def _on_port_change(self, e):
+        if self._server_running:
+            # Restart server on new port
+            self._on_server_toggle(False, 0)
+            port = int(self._remote_port.value or "8654")
+            success, err = self._on_server_toggle(True, port)
+            if success:
+                self._update_remote_ui_running(port)
+            else:
+                err_msg = err or self._t("error_prefix")
+                self._remote_status.value = f"{self._t('server_status')}: {err_msg}"
+                self._remote_status.color = ft.Colors.RED
+                self._update_remote_ui_stopped()
+            self.update()
+
+    def _update_remote_ui_running(self, port):
+        from src.server.network import get_local_ips, check_firewall_rule, generate_qr_data_url
+        L = self._t
+        self._remote_status.value = f"{L('server_status')}: {L('server_running')}"
+        self._remote_status.color = ft.Colors.GREEN
+        ips = get_local_ips()
+        if ips:
+            self._remote_ips.value = f"{L('local_ips')}: {', '.join(ips)}"
+            primary_ip = ips[0]
+            url = f"http://{primary_ip}:{port}"
+            qr_data = generate_qr_data_url(url)
+            if qr_data:
+                self._remote_qr.src = qr_data
+                self._remote_qr.visible = True
+                self._remote_qr_label.value = L("scan_qr_connect")
+                self._remote_qr_label.visible = True
+        else:
+            self._remote_ips.value = L("server_running") + " (no network detected)"
+
+        rule_ok, _, _ = check_firewall_rule(port)
+        if rule_ok:
+            self._remote_firewall.value = L("server_firewall_ok")
+            self._remote_firewall.color = ft.Colors.GREEN
+        else:
+            self._remote_firewall.value = L("server_firewall_warning").format(port=port)
+            self._remote_firewall.color = ft.Colors.ORANGE
+
+        self._remote_test_btn.visible = True
+
+    def _update_remote_ui_stopped(self):
+        L = self._t
+        self._remote_status.value = f"{L('server_status')}: {L('server_stopped')}"
+        self._remote_status.color = ft.Colors.GREY
+        self._remote_ips.value = ""
+        self._remote_qr.src = ""
+        self._remote_qr.visible = False
+        self._remote_qr_label.visible = False
+        self._remote_test_btn.visible = False
+        self._remote_test_result.value = ""
+        self._remote_firewall.value = ""
+
+    def _on_test_remote(self, e):
+        from src.server.network import test_port
+        L = self._t
+        port = int(self._remote_port.value or "8654")
+        ok, err = test_port("127.0.0.1", port)
+        if ok:
+            self._remote_test_result.value = L("server_test_success")
+            self._remote_test_result.color = ft.Colors.GREEN
+        else:
+            self._remote_test_result.value = f"{L('server_test_fail')}: {err}"
+            self._remote_test_result.color = ft.Colors.RED
+        self.update()
+
+    def update_remote_texts(self):
+        L = self._t
+        self._remote_title.value = L("remote_access")
+        self._remote_toggle.label = L("remote_enable")
+        self._remote_port.label = L("server_port")
+        self._remote_test_btn.text = L("test_local_connection")
+        if self._server_running:
+            self._update_remote_ui_running(int(self._remote_port.value or "8654"))
+        else:
+            self._update_remote_ui_stopped()
 
     async def _on_download_tectonic(self, e):
         self._tectonic_path.value = self._t("downloading")

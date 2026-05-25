@@ -30,7 +30,7 @@ For each page:
    - First try run_pdfimages to extract ALL images at once (saves to figures/ directory).
    - Or use extract_page_images for specific pages if pdfimages is unavailable.
 3. Use view_image('figures/<filename>') to inspect extracted images and understand what they contain.
-4. For pages with complex layout (multi-column, dense tables), use get_page_as_image to see the visual layout.
+4. For pages with complex layout (multi-column, dense tables), use get_page_as_image for layout debugging — but it produces a FULL PAGE RENDER, NOT a figure. Never use page_renders/ files in \\includegraphics.
 
 Translate content into {target_lang}, preserving all mathematical formulas exactly.
 
@@ -44,14 +44,19 @@ IMPORTANT LaTeX requirements:
 1. \\documentclass[12pt]{{article}}
 2. Required packages: fontspec, graphicx, hyperref, amsmath, amssymb, amsfonts, booktabs, geometry, float, subcaption, tcolorbox
 3. For CJK ({target_lang}): add \\usepackage{{xeCJK}} and \\setCJKmainfont{{{cjk_font_filename}}}
-4. For figures: use \\begin{{figure}}[H] with \\includegraphics[width=0.85\\textwidth,keepaspectratio]{{figures/filename.png}}.
-   This ensures figures fill the page width proportionally without leaving large blank areas.
-   For tall/narrow figures, use height=0.55\\textheight,keepaspectratio instead.
+4. For figures: use \\begin{{figure}}[H] with \\includegraphics[keepaspectratio]{{figures/filename.png}}.
+   Each image in run_pdfimages output includes a suggested_width field (e.g.
+   "0.45\\textwidth").  Use that value as the width parameter:
+     \\includegraphics[width=SUGGESTED_WIDTH,keepaspectratio]{{figures/filename.png}}
+   Suggested width is based on the image's native pixel size — small images get
+   smaller widths, full-width images get 0.85\\textwidth.  For tall/narrow images,
+   use the suggested height equivalent.
    The run_pdfimages output marks each file as type='content' or type='smask (skip)'.
    ONLY include files with type='content' and a source_page.  Skip anything with '(skip)'.
    Use source_page to match the image to its Figure number in the text.
    The content_count tells you how many actual figures exist — make sure ALL
-   content_count images appear in the output.
+   content_count images appear in the output.  When content_count=0, there are
+   zero figures on this page.  Do not invent figures.
    If an image looks like a table, include it as \\includegraphics -- do NOT
    try to recreate it as a LaTeX table.
    NEVER use [htbp] -- LaTeX float reordering breaks figure numbering.
@@ -59,7 +64,10 @@ IMPORTANT LaTeX requirements:
 6. Use \\begin{{table}}...\\end{{table}} and \\begin{{tabular}}...\\end{{tabular}} for tables
    extracted as TEXT by get_page_blocks.  If a table appears as an extracted IMAGE
    (view_image shows a table), include it with \\includegraphics — do NOT convert
-   image-tables to LaTeX tables.  Every extracted image must appear in the output.
+   image-tables to LaTeX tables.  Every extracted image (from run_pdfimages) must
+   appear in the output.  If content_count=0, there are NO images to embed — do NOT
+   add any \\includegraphics.  Never use page_renders/ files — those are full-page
+   renders, not figures.
 7. Every {{ must have a matching }}, every $ must have a matching $
 8. Wrap CJK characters inside math mode with \\text{{}}
 9. ONLY if a text block has `has_border: true` in the get_page_blocks output,

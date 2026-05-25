@@ -95,6 +95,49 @@ tests/                 # 测试（92 个）
 
 API Key 使用 DPAPI（Windows）或 base64 编码存储。
 
+## 远程访问（移动端连接）
+
+桌面端内置了 HTTP 服务器，手机 APP 可通过局域网或跨网络连接到桌面端投递翻译任务。
+
+### 局域网连接（同一 WiFi）
+
+1. 启动 AI PDF Trans
+2. 进入 **Settings** → **Remote Access**
+3. 开启 **Enable remote server access**
+4. 手机打开 AI PDF Trans Mobile APP，扫描屏幕上显示的二维码
+5. 连接成功后即可选择 PDF 开始翻译
+
+### 跨网络连接（Tailscale — 推荐）
+
+两台设备不在同一 WiFi 时（如电脑在家、手机在户外用 4G），通过 Tailscale 实现安全直连。
+
+#### 设置步骤
+
+##### 1. 电脑端安装 Tailscale
+
+访问 [tailscale.com/download](https://tailscale.com/download) 下载 Windows 版本，安装后用 Google/GitHub/Microsoft 账号登录。
+
+##### 2. 手机端安装 Tailscale
+
+Google Play 搜索 "Tailscale" 安装，登录**同一个账号**。
+
+##### 3. 确认连接
+
+电脑上运行 `ipconfig`，应能看到一个 Tailscale 适配器，IP 地址为 `100.x.x.x`。手机上打开 Tailscale APP，应显示同一网段内的设备。
+
+##### 4. 连接使用
+
+- 启动桌面端 AI PDF Trans 的远程服务器
+- 软件的设置页面会自动检测到 Tailscale IP 并显示独立的二维码
+- 手机扫码或手动输入 `http://100.x.x.x:8654` 即可连接
+
+> Tailscale 免费版支持最多 100 台设备、3 个用户，完全满足个人使用。
+
+### 其他方案
+
+- **ZeroTier**：功能类似 Tailscale，Android 端搜索 "ZeroTier One" 安装
+- **VPN 同网**：手机连接同一 VPN 后也可直接通过 VPN 内网 IP 连接
+
 ## License
 
 MIT

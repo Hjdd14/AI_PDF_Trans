@@ -99,6 +99,32 @@ class TranslatePage(ft.Column):
         if not self._is_running:
             self._status_text.value = L("ready")
 
+    def update_remote_progress(self, stage: str, progress: int, message: str, status: str):
+        """Called from app.py polling loop — shows remote task progress on the desktop GUI."""
+        if self._is_running:
+            return  # Local translation takes priority over remote display
+
+        if status == "running":
+            self._progress_bar.value = progress / 100
+            self._status_text.value = f"[远程] [{stage}] {message}"
+            self._detail_text.value = f"{progress}%"
+            self._translate_btn.disabled = True
+        elif status == "completed":
+            self._progress_bar.value = 1.0
+            self._status_text.value = "[远程] 翻译完成"
+            self._detail_text.value = ""
+            self._translate_btn.disabled = False
+        elif status in ("failed", "cancelled"):
+            self._progress_bar.value = 0
+            self._status_text.value = f"[远程] {status}: {message}"
+            self._detail_text.value = ""
+            self._translate_btn.disabled = False
+
+        try:
+            self.update()
+        except Exception:
+            pass
+
     async def _on_pick_source(self, e):
         files = await self._source_picker.pick_files(
             dialog_title=self._t("select_pdf_dialog"),

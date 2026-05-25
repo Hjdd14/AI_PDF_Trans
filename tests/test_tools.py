@@ -119,15 +119,16 @@ class TestGetPageBlocks:
 class TestGetPageAsImage:
     def test_renders_png(self, test_pdf, temp_dir):
         result = get_page_as_image(test_pdf, 1, temp_dir)
-        assert "image_path" in result
-        assert os.path.isfile(result["image_path"])
-        assert result["image_path"].endswith(".png")
+        assert "image_data" in result
+        assert result["image_data"].startswith("data:image/png;base64,")
         assert result["width"] > 0
         assert result["height"] > 0
+        assert result["file_size"] > 0
 
     def test_custom_dpi(self, test_pdf, temp_dir):
         result = get_page_as_image(test_pdf, 1, temp_dir, dpi=300)
-        assert os.path.isfile(result["image_path"])
+        assert result["image_data"].startswith("data:image/png;base64,")
+        assert result["file_size"] > 0
 
     def test_invalid_page(self, test_pdf, temp_dir):
         with pytest.raises(ValueError):

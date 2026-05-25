@@ -50,7 +50,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "get_page_as_image",
-            "description": "Render a PDF page as a PNG image file. Use this to visually understand page layout, multi-column structure, table placement, and figure positions.",
+            "description": "Render a PDF page for VISUAL REFERENCE. Use this to understand page layout when blocks appear disorganized. This produces a full-page render — do NOT use the output as a figure image.",
             "parameters": {
                 "type": "object",
                 "properties": {
