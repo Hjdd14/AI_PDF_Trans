@@ -302,7 +302,7 @@ class AgentRuntime:
             "messages": self._messages,
             "tools": TOOL_DEFINITIONS,
             "max_tokens": 16384,
-            "temperature": 0.3,
+            "temperature": 0,
             "timeout": 600,  # 10 min — agent accumulates many messages
         }
         if self.llm_config.api_key:

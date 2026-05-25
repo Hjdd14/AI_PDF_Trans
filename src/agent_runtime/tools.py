@@ -25,6 +25,7 @@ from src.utils.font_utils import (
     get_cjk_font_for_lang,
     get_cjk_font_file_for_lang,
 )
+from src.utils.logger import get_logger
 
 
 # ── PDF Handle Cache ────────────────────────────────────────────────────────────
@@ -580,6 +581,14 @@ def run_pdfimages(pdf_path: str, output_dir: str, prefix: str = "img") -> dict:
     summary += "Each image includes a 'suggested_width' field — use it as the width parameter in \\includegraphics. "
     summary += "Content images now include 'bbox', 'source_page_image_count', and 'position_hint' fields for spatial layout info."
 
+    # Save metadata for compile-time figure completeness check
+    try:
+        meta_path = os.path.join(output_dir, "_image_metadata.json")
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(file_details, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
     return {
         "files": file_details,
         "count": len(png_files),
@@ -897,8 +906,82 @@ def run_command(command: str, timeout: int = 60) -> dict:
 
 # ── Tool 12: compile_tex_to_pdf ───────────────────────────────────────────────
 
+def _ensure_all_figures_included(tex_path: str) -> int:
+    """Auto-insert any content images that the LLM forgot to include in the .tex.
+
+    Scans the figures/ directory next to the .tex file for images marked as
+    type='content' or type='vector_render' in the metadata saved by run_pdfimages.
+    If any such image is not referenced by \includegraphics in the .tex, appends a
+    \begin{figure}[H]...\end{figure} block before \end{document}.
+
+    Returns the number of missing figures that were added.
+    """
+    tex_dir = os.path.dirname(tex_path)
+    figures_dir = os.path.join(tex_dir, "figures")
+    meta_path = os.path.join(figures_dir, "_image_metadata.json")
+    if not os.path.isfile(meta_path):
+        return 0
+
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            all_images = json.load(f)
+    except Exception:
+        return 0
+
+    # Only auto-include real content images, not smask / fullpage
+    content_images = [
+        img for img in all_images
+        if img.get("type") in ("content", "vector_render")
+    ]
+    if not content_images:
+        return 0
+
+    with open(tex_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Find which images are already referenced
+    referenced = set(re.findall(r'\{figures/([^}]+)\}', content))
+    missing = [img for img in content_images if img["filename"] not in referenced]
+    if not missing:
+        return 0
+
+    # Append each missing image before \end{document}
+    additions = []
+    for img in missing:
+        sw = img.get("suggested_width", "")
+        if sw and sw.endswith("pt"):
+            width = sw
+        elif sw and sw.endswith("\\textwidth"):
+            width = sw
+        else:
+            width = "\\textwidth"
+        fname = img["filename"]
+        additions.append(
+            "\\begin{figure}[H]\n"
+            "    \\centering\n"
+            f"    \\includegraphics[width={width},keepaspectratio]{{figures/{fname}}}\n"
+            "\\end{figure}\n"
+        )
+
+    insert = "\n%" + "=" * 60 + "\n% Auto-inserted missing figures\n%" + "=" * 60 + "\n"
+    insert += "\n".join(additions)
+
+    content = content.replace("\\end{document}", insert + "\n\\end{document}")
+
+    with open(tex_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    return len(missing)
+
+
 def compile_tex_to_pdf(tex_path: str, output_dir: str, data_dir: str) -> dict:
     """Compile a .tex file to PDF using Tectonic."""
+    # Ensure all extracted images are referenced before compiling
+    n_fixed = _ensure_all_figures_included(tex_path)
+    if n_fixed:
+        log = get_logger()
+        log.info(f"Auto-inserted {n_fixed} missing figure(s) into {tex_path}")
+
     compiler = TexCompiler(data_dir)
     result = compiler.compile(tex_path, output_dir)
 

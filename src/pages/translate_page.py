@@ -117,13 +117,13 @@ class TranslatePage(ft.Column):
             self._cancel_btn.disabled = False
         elif status == "completed":
             self._progress_bar.value = 1.0
-            self._status_text.value = "[远程] 翻译完成"
+            self._status_text.value = "翻译完成"
             self._detail_text.value = ""
             self._translate_btn.disabled = False
             self._cancel_btn.disabled = True
         elif status in ("failed", "cancelled"):
             self._progress_bar.value = 0
-            self._status_text.value = f"[远程] {status}: {message}"
+            self._status_text.value = f"{status}: {message}"
             self._detail_text.value = ""
             self._translate_btn.disabled = False
             self._cancel_btn.disabled = True
