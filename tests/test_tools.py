@@ -23,6 +23,7 @@ from src.agent_runtime.tools import (
     list_directory,
     translation_complete,
     TOOL_FUNCTIONS,
+    _suggest_figure_width,
 )
 from tests.conftest import DATA_DIR, HAS_TECTONIC
 
@@ -150,6 +151,33 @@ class TestRunPdfimages:
             assert isinstance(result["files"], list)
 
 
+class TestSuggestFigureWidth:
+    """Test _suggest_figure_width heuristic (doesn't need pdfimages)."""
+
+    def test_high_dpi_image_uses_pixel_minimum(self):
+        """914px@360dpi → physical=183pt, pixel_min=387pt → 387pt"""
+        result = _suggest_figure_width(914, 182.8)
+        assert result == "387pt", f"Expected 387pt, got {result}"
+
+    def test_normal_dpi_image_uses_physical(self):
+        """530px@180dpi → physical=212pt, pixel_min=205pt → 212pt"""
+        result = _suggest_figure_width(530, 212.0)
+        assert result == "212pt", f"Expected 212pt, got {result}"
+
+    def test_large_image_no_dpi_uses_textwidth(self):
+        result = _suggest_figure_width(914, None)
+        assert "\\textwidth" in result
+
+    def test_small_image_no_dpi(self):
+        result = _suggest_figure_width(100, None)
+        assert result == "0.3\\textwidth"
+
+    def test_physical_below_pixel_min_uses_pixel_min(self):
+        """100px@72dpi → physical=100pt, pixel_min=137pt → 136pt"""
+        result = _suggest_figure_width(100, 100.0)
+        assert result in ("136pt", "137pt"), f"Expected ~136pt, got {result}"
+
+
 # ─── Test 6: extract_page_images ─────────────────────────────────────────────
 
 class TestExtractPageImages:
@@ -233,6 +261,30 @@ class TestWriteTexFile:
         content = read_tex_file(path)
         assert "New" in content
         assert "Old" not in content
+
+    def test_strips_spurious_tcolorbox_from_theorems(self, temp_dir):
+        path = os.path.join(temp_dir, "test.tex")
+        content = "\n".join([
+            r"\documentclass{article}",
+            r"\begin{document}",
+            r"\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt]",
+            r"\begin{theorem}",
+            r"content",
+            r"\end{theorem}",
+            r"\end{tcolorbox}",
+            r"\begin{proposition}",
+            r"no box around me",
+            r"\end{proposition}",
+            r"\end{document}",
+        ])
+        write_tex_file(path, content)
+        with open(path, "r", encoding="utf-8") as f:
+            result = f.read()
+        assert r"\begin{tcolorbox}" not in result
+        assert r"\begin{theorem}" in result
+        assert r"\begin{proposition}" in result
+        assert "content" in result
+        assert "no box around me" in result
 
 
 # ─── Test 10: read_tex_file ──────────────────────────────────────────────────

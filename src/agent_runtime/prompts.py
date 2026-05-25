@@ -46,13 +46,18 @@ IMPORTANT LaTeX requirements:
 3. For CJK ({target_lang}): add \\usepackage{{xeCJK}} and \\setCJKmainfont{{{cjk_font_filename}}}
 4. For figures: use \\begin{{figure}}[H] with \\includegraphics[keepaspectratio]{{figures/filename.png}}.
    Each image in run_pdfimages output includes a suggested_width field (e.g.
-   "0.45\\textwidth").  Use that value as the width parameter:
+   "120pt").  Use that value as the width parameter:
      \\includegraphics[width=SUGGESTED_WIDTH,keepaspectratio]{{figures/filename.png}}
-   Suggested width is based on the image's native pixel size — small images get
-   smaller widths, full-width images get 0.85\\textwidth.  For tall/narrow images,
-   use the suggested height equivalent.
-   The run_pdfimages output marks each file as type='content' or type='smask (skip)'.
-   ONLY include files with type='content' and a source_page.  Skip anything with '(skip)'.
+   The suggested_width is computed from the image's rendering DPI (x-ppi) in the
+   original PDF — this ensures figures appear at the exact same physical size.
+   If an image does NOT have a suggested_width in pt, use width=\\textwidth and
+   adjust as needed.  For tall/narrow images, use height=0.55\\textheight instead.
+   The run_pdfimages output marks each file as type='content' (raster image),
+   type='vector_render' (rendered page for vector graphics), or type='smask (skip)'.
+   Include files with type='content' OR type='vector_render' that have a source_page.
+   Skip anything with '(skip)'.
+   type='vector_render' images are rendered vector graphics
+   (line charts, diagrams, drawings) that pdfimages could not extract as raster.
    Use source_page to match the image to its Figure number in the text.
    The content_count tells you how many actual figures exist — make sure ALL
    content_count images appear in the output.  When content_count=0, there are
@@ -64,21 +69,37 @@ IMPORTANT LaTeX requirements:
 6. Use \\begin{{table}}...\\end{{table}} and \\begin{{tabular}}...\\end{{tabular}} for tables
    extracted as TEXT by get_page_blocks.  If a table appears as an extracted IMAGE
    (view_image shows a table), include it with \\includegraphics — do NOT convert
-   image-tables to LaTeX tables.  Every extracted image (from run_pdfimages) must
-   appear in the output.  If content_count=0, there are NO images to embed — do NOT
-   add any \\includegraphics.  Never use page_renders/ files — those are full-page
+   image-tables to LaTeX tables.  Every image from run_pdfimages (type='content' or type='vector_render') must appear in the output.  If content_count=0, there are NO images to embed — do NOT add any \\includegraphics.  Never use page_renders/ files — those are full-page
    renders, not figures.
 7. Every {{ must have a matching }}, every $ must have a matching $
 8. Wrap CJK characters inside math mode with \\text{{}}
 9. ONLY if a text block has `has_border: true` in the get_page_blocks output,
    wrap it in \\begin{{tcolorbox}}[colback=white,colframe=black,boxrule=0.5pt]...\\end{{tcolorbox}}.
+   If border_color/border_width is null (line-based decorative frame), still use
+   the default black frame with no fill: \\begin{{tcolorbox}}[colback=white,colframe=black,boxrule=0.5pt]...
    If `has_border` is null, absent, or false: output the text as plain paragraphs
    with NO frame, NO colored box, and NO border.  Never add decorative frames
    to definitions, theorems, or any other block unless the data says it has one.
+   IMPORTANT: Definitions, theorems, propositions, and lemmas in academic PDFs
+   rarely have borders.  If you see has_border=true on such a block, verify it
+   is a genuine block-level border — page-level decorative frames (which should
+   be filtered out) are not block borders.  When in doubt, do NOT add a tcolorbox.
 10. Preserve original line structure.  get_page_blocks joins lines within a block
    with spaces, but the original PDF has separate lines (e.g., title/author/affiliation
    blocks).  Use get_page_text to see the original line breaks, and reproduce
    multi-line blocks with \\\\ or separate paragraphs as in the original.
+11. Subfigure grouping: If multiple content images share the same source_page AND
+   have different bbox positions (e.g., different y-coordinates), they are subfigures
+   of a multi-panel figure.  Group them into a single \\begin{{figure}}[H] environment,
+   preserving the original layout — images at top/bottom form rows, images at
+   left/right form columns.  For a 2×2 grid, use two rows of side-by-side
+   \\begin{{minipage}} environments (or \\begin{{subfigure}}).  Each sub-image retains
+   its own suggested_width; scale within the minipage as needed.
+12. Figure placement: Insert \\begin{{figure}}[H] at the point in the text corresponding
+   to the image's source_page.  In enumeration environments (enumerate/itemize with
+   \\item blocks), place figures BETWEEN the relevant \\item blocks — e.g., if a figure
+   belongs to Q1's content, put it after Q1's \\item and before Q2's.  The
+   write_tex_file post-processor will automatically split the list around [H] floats.
 
 ### Step 4: Compile and Fix
 1. Call compile_tex_to_pdf(tex_path="{tex_path}", output_dir="{working_dir}")
