@@ -4,6 +4,8 @@
 AI 驱动的 PDF 教材翻译工具。将英文 PDF 教材完整翻译为中文 PDF，保持原有排版、数学公式和图表。
 
 注意：AI翻译排版等不可控，有可能会出现多次翻译效果不同的情况。
+
+安卓远程：https://github.com/Hjdd14/ai-pdf-trans-apk
 ## 功能
 
 - 基于 LLM Agent 的智能翻译，自动解析 PDF 结构
