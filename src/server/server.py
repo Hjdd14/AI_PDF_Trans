@@ -18,6 +18,10 @@ def _run_translation(task_id, source_path, output_path, source_lang, target_lang
         return
 
     def on_progress(stage, progress, message):
+        # Check if remotely cancelled — cancel flag takes priority
+        t = task_manager.get(task_id)
+        if t and t.cancelled and stage not in ("cancelled", "done", "error"):
+            raise InterruptedError("Translation cancelled by user")
         task_manager.update(task_id, stage=stage, progress=progress, message=message)
         task_manager.broadcast_ws(task_id, {
             "type": "progress", "stage": stage, "progress": progress, "message": message,

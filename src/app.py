@@ -60,7 +60,7 @@ class AIPDFTransApp:
             self._run_count = 1
 
         self._settings_page = SettingsPage(self.config, self._on_config_changed, self._on_server_toggle)
-        self._translate_page = TranslatePage(self.config, self.data_dir)
+        self._translate_page = TranslatePage(self.config, self.data_dir, self._cancel_remote_task)
 
         self._tab_translate = ft.Tab(label=self._t("tab_translate"), icon=ft.Icons.TRANSLATE)
         self._tab_settings = ft.Tab(label=self._t("tab_settings"), icon=ft.Icons.SETTINGS)
@@ -170,6 +170,13 @@ class AIPDFTransApp:
             log = get_logger()
             log.info("Remote server stopped")
 
+    def _cancel_remote_task(self, task_id: str):
+        """Cancel a remote translation task — called from TranslatePage cancel button."""
+        if self._task_manager:
+            log = get_logger()
+            log.info(f"Cancelling remote task {task_id}")
+            self._task_manager.cancel(task_id)
+
     async def _remote_progress_poll(self):
         """Poll task_manager for remote translation tasks and update the desktop GUI."""
         while self._remote_poll_task is not None:
@@ -182,6 +189,7 @@ class AIPDFTransApp:
                             progress=task.progress,
                             message=task.message,
                             status=task.status,
+                            task_id=task.task_id,
                         )
             except Exception:
                 pass

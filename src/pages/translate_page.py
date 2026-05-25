@@ -12,16 +12,18 @@ from src.utils.logger import get_logger
 
 
 class TranslatePage(ft.Column):
-    def __init__(self, config: FullConfig, data_dir: str):
+    def __init__(self, config: FullConfig, data_dir: str, on_remote_cancel=None):
         super().__init__(expand=True, spacing=10)
         self.config = config
         self.data_dir = data_dir
+        self._on_remote_cancel = on_remote_cancel
         self.log = get_logger()
         self._is_running = False
         self._pipeline = None
         self._source_path = ""
         self._output_path = ""
         self._progress_data = None
+        self._remote_task_id = None  # Set by update_remote_progress for cancel
         self._source_picker = ft.FilePicker()
         self._output_picker = ft.FilePicker()
         self._build_ui()
@@ -99,26 +101,32 @@ class TranslatePage(ft.Column):
         if not self._is_running:
             self._status_text.value = L("ready")
 
-    def update_remote_progress(self, stage: str, progress: int, message: str, status: str):
+    def update_remote_progress(self, stage: str, progress: int, message: str, status: str, task_id: str = ""):
         """Called from app.py polling loop — shows remote task progress on the desktop GUI."""
         if self._is_running:
             return  # Local translation takes priority over remote display
+
+        if task_id:
+            self._remote_task_id = task_id
 
         if status == "running":
             self._progress_bar.value = progress / 100
             self._status_text.value = f"[远程] [{stage}] {message}"
             self._detail_text.value = f"{progress}%"
             self._translate_btn.disabled = True
+            self._cancel_btn.disabled = False
         elif status == "completed":
             self._progress_bar.value = 1.0
             self._status_text.value = "[远程] 翻译完成"
             self._detail_text.value = ""
             self._translate_btn.disabled = False
+            self._cancel_btn.disabled = True
         elif status in ("failed", "cancelled"):
             self._progress_bar.value = 0
             self._status_text.value = f"[远程] {status}: {message}"
             self._detail_text.value = ""
             self._translate_btn.disabled = False
+            self._cancel_btn.disabled = True
 
         try:
             self.update()
@@ -237,5 +245,10 @@ class TranslatePage(ft.Column):
         if self._pipeline:
             self._pipeline.cancel()
             self._status_text.value = self._t("cancelling")
+            self._cancel_btn.disabled = True
+            self.update()
+        elif self._remote_task_id and self._on_remote_cancel:
+            self._on_remote_cancel(self._remote_task_id)
+            self._status_text.value = "正在取消远程任务..."
             self._cancel_btn.disabled = True
             self.update()

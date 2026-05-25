@@ -54,13 +54,22 @@ class TaskManager:
             return self._tasks.get(task_id)
 
     def get_active_task_info(self):
-        """Return the first task in 'running' status, or None.
-        Used by the desktop GUI to show remote task progress."""
+        """Return the first running task, or the most recently completed/failed/cancelled task.
+        Used by the desktop GUI to show remote task progress.
+        Returning terminal-state tasks ensures the UI doesn't freeze on the last 'running' update."""
         with self._lock:
+            terminal = None
             for task in self._tasks.values():
                 if task.status == "running":
                     return task
-        return None
+                if task.status in ("completed", "failed", "cancelled"):
+                    if terminal is None or (
+                        task.completed_at
+                        and terminal.completed_at
+                        and task.completed_at > terminal.completed_at
+                    ):
+                        terminal = task
+            return terminal
 
     def update(self, task_id, **kwargs):
         with self._lock:
