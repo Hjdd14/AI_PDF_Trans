@@ -72,7 +72,7 @@ def create_app(task_manager, config, data_dir, port):
             f.write(content)
 
         output_path = os.path.join(task_dir, "translated.pdf")
-        task_manager.create(source_path, output_path, source_lang, target_lang)
+        task_manager.create(task_id, source_path, output_path, source_lang, target_lang)
         task_manager.update(task_id, status="running", stage="agent_started", progress=5, message="Starting agent...")
 
         import threading

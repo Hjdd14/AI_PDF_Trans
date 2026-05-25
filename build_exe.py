@@ -63,10 +63,9 @@ def build():
 
     args.append("main.py")
 
-    # Clean previous build
-    for d in ["build", "dist"]:
-        if os.path.isdir(d):
-            shutil.rmtree(d)
+    # Clean previous build artifacts (except dist — --noconfirm overwrites)
+    if os.path.isdir("build"):
+        shutil.rmtree("build", ignore_errors=True)
 
     print(f"Building with {len(args)} args...")
     PyInstaller.__main__.run(args)

@@ -42,8 +42,7 @@ class TaskManager:
         # task_id -> [(websocket, queue.Queue)]
         self._ws_connections = {}
 
-    def create(self, source_path, output_path, source_lang, target_lang):
-        task_id = str(uuid.uuid4())
+    def create(self, task_id, source_path, output_path, source_lang, target_lang):
         task = TaskInfo(task_id, source_path, output_path, source_lang, target_lang)
         with self._lock:
             self._tasks[task_id] = task
